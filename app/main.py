@@ -107,7 +107,7 @@ async def upload_excel(file: UploadFile = File(...)):
         # Llamar a la función de procesamiento
         last_json_output = handle_upload_file(xls, sheet_name)
 
-        return {"data": last_json_output}
+        return last_json_output
 
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
