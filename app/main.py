@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, HTTPException, File
 import pandas as pd
 from io import BytesIO
 from fastapi.middleware.cors import CORSMiddleware
+import json
 
 app = FastAPI()
 
@@ -82,7 +83,7 @@ def handle_upload_file(xls: pd.ExcelFile, sheet_name: str) -> str:
         df_intermedio["price"] = df_intermedio["price"].round(2)
         df_intermedio["quantity"] = df_intermedio["quantity"].round(2)
         
-        json_output = df_intermedio.to_json(orient="records", indent=4, force_ascii=False)
+        json_output = json.loads(df_intermedio.to_json(orient="records", force_ascii=False))
         # Convertir a JSON
         return  json_output
 
