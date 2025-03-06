@@ -1,18 +1,24 @@
 from fastapi import FastAPI, UploadFile, HTTPException, File
 import pandas as pd
 from io import BytesIO
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-@app.get("/")
-def index():
-    return "holanda"
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# Instanciamos la clase
-app = FastAPI()
+last_json_output = None
 
 @app.get("/")
 def read_root():
+    if last_json_output:
+        return { "data": last_json_output }
     return {"message": "Subi el archivo mada faka"}
 
 def handle_upload_file(xls: pd.ExcelFile, sheet_name: str) -> str:
@@ -98,9 +104,9 @@ async def upload_excel(file: UploadFile = File(...)):
         sheet_name = xls.sheet_names[0]
 
         # Llamar a la función de procesamiento
-        json_output = handle_upload_file(xls, sheet_name)
+        last_json_output = handle_upload_file(xls, sheet_name)
 
-        return {"data": json_output}
+        return {"data": last_json_output}
 
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
