@@ -1,10 +1,18 @@
-from fastapi import FastAPI, UploadFile, HTTPException, File
+from fastapi import FastAPI, UploadFile, HTTPException, File, Response
 import pandas as pd
 from io import BytesIO
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.platypus import Table, TableStyle
+from datetime import datetime
+from typing import Dict, Any
 import json
+import locale
 
-app = FastAPI()
+app = FastAPI() 
 
 app.add_middleware(
     CORSMiddleware,
@@ -113,3 +121,131 @@ async def upload_excel(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando el archivo: {str(e)}")
+    
+locale.setlocale(locale.LC_ALL, 'Spanish_Argentina.1252')
+
+@app.post("/generate_certificate_pdf")
+async def generate_certificate_pdf(data: Dict[str, Any]):
+    try:
+        pdf_buffer = BytesIO()  # Creamos un buffer en memoria (fundamental para railway)
+        c = canvas.Canvas(pdf_buffer, pagesize=letter)
+        certificate_data = data
+        project_data = data['Project']
+        project_name = project_data['name']
+        project_number = project_data['projectNumber']
+        project_address = project_data['address']
+        project_description = project_data['description']
+        issued_at = datetime.strptime(certificate_data['issuedAt'], "%Y-%m-%dT%H:%M:%S.%fZ").strftime("%d/%m/%Y")
+
+        filename = f"certificate_{certificate_data['id']}.pdf"
+
+        # c = canvas.Canvas(filename, pagesize=letter)
+        c.setLineWidth(.3)
+        c.setFont('Helvetica', 22)
+        c.drawString(30, 750, 'Certificado de Avance de Obra')
+        c.setFont('Helvetica', 12)
+        c.drawString(30, 735, f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(30, 700, "Detalles del Proyecto:")
+        c.setFont('Helvetica', 12)
+        c.drawString(30, 680, f"Nombre: {project_name}")
+        c.drawString(30, 660, f"Número de Proyecto: {project_number}")
+        c.drawString(30, 640, f"Dirección: {project_address}")
+        c.drawString(30, 620, f"Descripción: {project_description}")
+
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(30, 590, "Detalles del Certificado:")
+        c.setFont('Helvetica', 12)
+        c.drawString(30, 570, f"Versión: {certificate_data['version']}")
+        c.drawString(
+            30, 550, f"Monto Certificado:{locale.currency(certificate_data['certificateAmount'], grouping=True)}"
+        )
+        c.drawString(30, 530, f"Fecha de Emisión: {issued_at}")
+
+        # Tabla de Items
+        data_items = [
+            [
+                "Sección",
+                "Descripción",
+                "Un.",
+                "Cant.",
+                "Precio",
+                "Progreso",
+                "Subtotal",
+            ]
+        ]
+        total_amount = 0.0
+
+        for item_data in certificate_data['certificateItems']:
+            item = item_data['item']
+            progress = item_data['progress']
+            subtotal = (item['price'] * progress) / 100
+            total_amount += subtotal
+
+            description = item['description'].strip()
+            section = item['section'].capitalize()
+
+            section_lines = []
+            for i in range(0, len(section), 15): 
+                section_lines.append(section[i:i+15])
+            section = "\n".join(section_lines)
+
+            words = description.split()
+            description_lines = []
+            line = ""
+
+            for word in words:
+                if len(line) + len(word) < 40:  
+                    line += word + " "
+                else:
+                    description_lines.append(line.strip())
+                    line = word + " "
+            description_lines.append(line.strip())
+
+            data_items.append([
+                section,
+                "\n".join(description_lines),  
+                item['unit'],
+                str(item['quantity']),
+                locale.currency(item['price'], grouping=True),
+                f"{progress}%",
+                locale.currency(subtotal, grouping=True),
+            ])
+
+
+        table = Table(data_items, colWidths=[80, 200, 30, 30, 70, 50, 70])
+        table.setStyle(
+            TableStyle(
+                [
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                    ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                    ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                    ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('FONTSIZE', (0, 1), (0, -1), 10),  
+                    ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ]
+            )
+        )
+
+        table.wrapOn(c, 800, 600)
+        table.drawOn(c, 30, 300 - len(data_items) * 15) 
+
+        # Total general
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(30, 250 - len(data_items) * 15, f"Total del Certificado: ${total_amount:.2f}")  
+
+        c.save()
+        pdf_buffer.seek(0)
+
+        # return FileResponse(filename, media_type="application/pdf", filename=filename)
+        
+        return Response(pdf_buffer.read(), media_type="application/pdf", headers={
+            "Content-Disposition": "attachment; filename=certificado.pdf"
+        })
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
