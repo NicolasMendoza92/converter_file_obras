@@ -121,7 +121,10 @@ async def upload_excel(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando el archivo: {str(e)}")
     
-locale.setlocale(locale.LC_ALL, 'Spanish_Argentina.1252')
+try:
+    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()) 
+except locale.Error:
+    locale.setlocale(locale.LC_ALL, '')
 
 def generate_pdf_format(data: Dict[str, Any], pdf_buffer: BytesIO):
     c = canvas.Canvas(pdf_buffer, pagesize=letter)
