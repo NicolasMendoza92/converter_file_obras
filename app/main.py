@@ -9,7 +9,6 @@ from reportlab.platypus import Table, TableStyle
 from datetime import datetime
 from typing import Dict, Any
 import json
-import locale
 
 app = FastAPI() 
 
@@ -121,10 +120,8 @@ async def upload_excel(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error procesando el archivo: {str(e)}")
     
-try:
-    locale.setlocale(locale.LC_ALL, locale.getdefaultlocale()) 
-except locale.Error:
-    locale.setlocale(locale.LC_ALL, '')
+def format_currency(amount):
+    return f"${amount:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") 
 
 def generate_pdf_format(data: Dict[str, Any], pdf_buffer: BytesIO):
     c = canvas.Canvas(pdf_buffer, pagesize=letter)
@@ -159,7 +156,7 @@ def generate_pdf_format(data: Dict[str, Any], pdf_buffer: BytesIO):
     c.setFont('Helvetica', 12)
     c.drawString(30, 570, f"Versión: {certificate_data['version']}")
     c.drawString(
-        30, 550, f"Monto Certificado: {locale.currency(certificate_data['certificateAmount'], grouping=True)}"
+        30, 550, f"Monto Certificado: {format_currency(certificate_data['certificateAmount'])}"
     )
     c.drawString(30, 530, f"Fecha de Emisión: {issued_at}")
 
@@ -200,9 +197,9 @@ def generate_pdf_format(data: Dict[str, Any], pdf_buffer: BytesIO):
             "\n".join(description_lines),  
             item['unit'],
             str(item['quantity']),
-            locale.currency(item['price'], grouping=True),
+            format_currency(item['price']),
             f"{progress}%",
-            locale.currency(subtotal, grouping=True),
+            format_currency(subtotal),
         ])
 
     # Estilo de la tabla
@@ -226,7 +223,7 @@ def generate_pdf_format(data: Dict[str, Any], pdf_buffer: BytesIO):
 
     # Total general
     c.setFont('Helvetica-Bold', 14)
-    c.drawString(30, 250 - len(data_items) * 15, f"Total del Certificado: {locale.currency(total_amount, grouping=True)}")
+    c.drawString(30, 250 - len(data_items) * 15, f"Total del Certificado: {format_currency(total_amount)}")
 
     c.save()
     pdf_buffer.seek(0)
